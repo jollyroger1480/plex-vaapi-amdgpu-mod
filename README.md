@@ -77,3 +77,65 @@ docker push <registry>/plex-vaapi-amdgpu-mod
 ```
 
 The engine tracks `alpine:edge`, so a plain rebuild whenever Mesa releases picks up the new driver.
+
+## Alternative: bake the engine into your Plex image (no mod at all)
+
+If you'd rather not use the `DOCKER_MODS` mechanism at all (one fewer moving part at container start — the mod download can't fail), build your own Plex image with the Mesa stack inside it. This is how this fork's author runs it in production, verified the same day as the mod path.
+
+**1. `Dockerfile`** (multi-stage — same curated lib set as the mod, copied straight into the image):
+
+```dockerfile
+FROM alpine:edge AS mesa
+
+RUN apk add mesa-va-gallium --no-cache --update-cache
+
+RUN mkdir -p /out/lib/dri /out/share/libdrm \
+ && cp -a /usr/lib/dri/*.so /out/lib/dri \
+ && cp -a /lib/ld-musl-x86_64.so.1* /lib/libc.musl-x86_64.so.1* /out/lib/ \
+ && cp -a \
+    libLLVM* libgallium* libSPIRV-Tools.so* libSPIRV-Tools-shared.so* \
+    libX11-xcb.so.1* libXau.so.6* libXdmcp.so.6* \
+    libdrm.so.2* libdrm_amdgpu.so.1* libdrm_nouveau.so.2* libdrm_radeon.so.1* \
+    libelf* libexpat.so.1* libgcc_s.so.1* libstdc++.so.6* \
+    libva-drm.so.2* libva.so.2* \
+    libxcb-dri2.so.0* libxcb-dri3.so.0* libxcb-present.so.0* libxcb-randr.so.0* \
+    libxcb-sync.so.1* libxcb-xfixes.so.0* libxcb.so.1* \
+    libxml2.so.2* libxshmfence.so.1* libbsd.so.0* libmd.so.0* \
+    libzstd.so.1* libffi.so.8* liblzma.so.5* libz.so.1* \
+    /out/lib/ \
+ && cp -a /usr/share/libdrm/amdgpu.ids /out/share/libdrm/
+
+FROM lscr.io/linuxserver/plex:latest
+
+COPY --from=mesa /out /vaapi-amdgpu
+```
+
+**2.** Build and drop the mod from your run/compose — env vars do the work the mod's launcher used to do:
+
+```yaml
+# docker compose (relevant bits)
+services:
+  plex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: plex-amdgpu:latest
+    environment:
+      - LD_LIBRARY_PATH=/vaapi-amdgpu/lib
+      - LIBVA_DRIVERS_PATH=/vaapi-amdgpu/lib/dri
+      # NO DOCKER_MODS line
+    devices:
+      - /dev/dri:/dev/dri
+```
+
+**3.** Apply it with a **recreate, not a plain restart** — `docker compose up -d --force-recreate`. A plain `docker restart` keeps the old image and can also lose the compose network.
+
+**4.** Tag the previous image before rebuilding so rollback is instant:
+
+```bash
+docker tag plex-amdgpu plex-amdgpu:previous
+docker build -t plex-amdgpu . && docker compose up -d --force-recreate
+# rollback = re-tag + force-recreate again
+```
+
+Verification is identical to the mod path (see Troubleshooting above). Because the engine ships inside the image, an update is: `docker build` + `--force-recreate` — no mod download happens at startup.
