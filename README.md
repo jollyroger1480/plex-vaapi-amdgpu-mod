@@ -149,6 +149,47 @@ docker build -t plex-amdgpu . && docker compose up -d --force-recreate
 
 Verification is identical to the mod path (see Troubleshooting above). Because the engine ships inside the image, an update is: `docker build` + `--force-recreate` — no mod download happens at startup.
 
+## Optional: GPU HDR tone mapping (`gpu-tonemap/`)
+
+Even with VAAPI working, Plex tone maps HDR on the CPU. It decodes on the GPU, copies every frame back, runs `tonemap=hable` in software and uploads the result again. On 4K HDR that is the bottleneck, and it can fall below real time. `gpu-tonemap/` is an extra layer on top of the baked image above. It adds Mesa rusticl (OpenCL) and a wrapper around `Plex Transcoder` that does the tone mapping on the GPU (`scale_vaapi` + `tonemap_opencl`).
+
+The wrapper is strict. A job goes to the GPU only when all of these hold:
+
+- the filter graph is exactly Plex's CPU HDR chain
+- every input option is one the wrapper knows
+- the VAAPI and OpenCL devices work
+- no stream is mapped straight from the source file
+
+Every other job, SDR titles included, goes to the real transcoder untouched. In practice, HDR jobs with an embedded MP4 subtitle (`mov_text`) selected stay on the CPU path.
+
+```bash
+docker tag plex-amdgpu plex-amdgpu:previous
+docker build -t plex-amdgpu-tonemap --build-arg BASE=plex-amdgpu:previous gpu-tonemap
+```
+
+Point compose at `plex-amdgpu-tonemap` and recreate. Then:
+
+- **Off switch** (no restart; applies from the next job): `docker exec plex touch /config/gpu-tonemap.disable`. Delete the file to turn it back on. `PLEX_GPU_TONEMAP=0` in the container environment also turns it off.
+- **Log:** `/tmp/plex-gpu-tonemap/wrapper.log` inside the container shows which path each HDR job took and why.
+- **Rollback:** point compose back at `plex-amdgpu:previous` and run `docker compose up -d --force-recreate`.
+
+**Memory cap.** The wrapper keeps a bounded queue of raw frames. One 4K HDR session on the GPU path peaked at about 1.3 GiB. A hard cap on the container stops a runaway transcoder from taking the whole host down with it:
+
+```yaml
+services:
+  plex:
+    mem_limit: 8g
+    memswap_limit: 8g   # same value as mem_limit = no swap on top of the cap
+```
+
+**Tested 2026-11-19** on a Radeon RX 6950 XT (Navi 21), LinuxServer Plex 1.43.5, Mesa 26.3.0 from `alpine:edge`, with the 8g cap above. The test requested 4K output at 40 Mbps.
+
+- A 4K HDR MKV and a 4K HDR MP4 ran at the same time on the GPU path. The MKV ran at 4–6.5x. The MP4 (3840x2076, 20 Mbps HEVC) kept up at about 1.1x. The container peaked at under 2.6 GiB.
+- Both kept working after a seek. Memory stayed flat across a 5.5-minute session.
+- An SDR title went through untouched.
+- With the off switch on, HDR jobs went back to the CPU path.
+- Not tested: other GPUs, real remote clients, and sessions longer than a few minutes.
+
 ## Support and links
 
 This fork's updates are free, and a tip is welcome but never expected. Tips go to the fork maintainer, not the upstream author.
