@@ -8,7 +8,7 @@ Fork of [jefflessard/plex-vaapi-amdgpu-mod](https://github.com/jefflessard/plex-
 
 ## Why this fork exists
 
-Upstream's published Docker Hub image (`jefflessard/plex-vaapi-amdgpu-mod`) is frozen at ~2023-03 — **Mesa 22.3 / libva 2.17 / LLVM 15** — even though the Dockerfile builds from `alpine:edge` (the published image just wasn't rebuilt). This fork rebuilds against current `alpine:edge` (**2026-09-11 build = Mesa 26.2.2 / libva 2.23 / LLVM 23 / ACO**) and fixes the library copy list for modern Mesa.
+Upstream's published Docker Hub image (`jefflessard/plex-vaapi-amdgpu-mod`) is frozen at ~2023-03 — **Mesa 22.3 / libva 2.17 / LLVM 15** — even though the Dockerfile builds from `alpine:edge` (the published image just wasn't rebuilt). This fork rebuilds against current `alpine:edge` (**2026-11-18 build = Mesa 26.3.0 / libva 2.24.1 / LLVM 23.1 / libdrm 2.4.134 / ACO**) and fixes the library copy list for modern Mesa.
 
 The libraries come from the [mesa-va-gallium](https://pkgs.alpinelinux.org/package/edge/main/x86/mesa-va-gallium) package on `alpine:edge` (musl). They are kept isolated in `/vaapi-amdgpu/lib` so they never overwrite the Ubuntu/glibc libraries that ship with `plexmediaserver` — the same approach as upstream, with `VERSION=latest` Plex images.
 
@@ -20,16 +20,19 @@ and quietly falls back to software, 1000%+ CPU):
 
 | Change | Why |
 |---|---|
-| `libLLVM-15*` → `libLLVM*` | LLVM soname changed (now 23) |
+| `libLLVM-15*` → `libLLVM*` | LLVM soname changed (now `libLLVM.so.23.1`) |
 | add `libgallium*` | Mesa 23.3+: radeonsi is a stub that dlopens `libgallium-*.so` |
 | add `libSPIRV-Tools.so*` | Mesa 24+: shader compiler, runtime dlopen |
 | add `libxcb-randr.so.0*` | newer stack dlopens it at runtime |
 | `libz.so.1*` from `/usr/lib` | moved out of `/lib` in current Alpine edge |
 | `libelf*` (broadened glob) | covers `libelf-<ver>.so` + `libelf.so.1` |
+| add `libdrm_intel.so.1*` + `libpciaccess.so.0*` | Mesa 26.3: `libgallium` now links `libdrm_intel`. Without them in the bundle the driver only loads by borrowing Plex's own older copies |
 
 Deliberately NOT changed: the runtime `libva` API stays whatever `mesa-va-gallium` pulls on Alpine edge, and the copy list stays **curated** — do not ldd-copy the full closure, it drags in musl `libpcre2`/`libselinux` which shadow glibc libs in the Plex container (via `LD_LIBRARY_PATH`) and crash Plex at startup.
 
 Verified live 2026-09-11: Plex 1.43.4 (`lscr.io/linuxserver/plex:latest`), AMD RX 6950 XT (navi21): `hardware transcoding: final decoder: vaapi, final encoder: vaapi`.
+
+Re-checked 2026-11-18 against Mesa 26.3.0 and Plex 1.43.5.11079 (`lscr.io/linuxserver/plex:latest`, ls333) on the same RX 6950 XT: every library the VAAPI driver needs resolves inside the bundle, `vainfo` lists the radeonsi decode and encode profiles (H.264, HEVC, HEVC Main10, VP9, AV1 decode), and Plex's own `Plex Transcoder` opens the driver and encodes with `h264_vaapi`. A full transcode inside a running Plex server was not re-run on this build.
 
 ## Usage
 
@@ -94,15 +97,16 @@ RUN apk add mesa-va-gallium --no-cache --update-cache
 RUN mkdir -p /out/lib/dri /out/share/libdrm \
  && cp -a /usr/lib/dri/*.so /out/lib/dri \
  && cp -a /lib/ld-musl-x86_64.so.1* /lib/libc.musl-x86_64.so.1* /out/lib/ \
+ && cd /usr/lib \
  && cp -a \
     libLLVM* libgallium* libSPIRV-Tools.so* libSPIRV-Tools-shared.so* \
     libX11-xcb.so.1* libXau.so.6* libXdmcp.so.6* \
-    libdrm.so.2* libdrm_amdgpu.so.1* libdrm_nouveau.so.2* libdrm_radeon.so.1* \
+    libdrm.so.2* libdrm_amdgpu.so.1* libdrm_intel.so.1* libdrm_nouveau.so.2* libdrm_radeon.so.1* \
     libelf* libexpat.so.1* libgcc_s.so.1* libstdc++.so.6* \
     libva-drm.so.2* libva.so.2* \
     libxcb-dri2.so.0* libxcb-dri3.so.0* libxcb-present.so.0* libxcb-randr.so.0* \
     libxcb-sync.so.1* libxcb-xfixes.so.0* libxcb.so.1* \
-    libxml2.so.2* libxshmfence.so.1* libbsd.so.0* libmd.so.0* \
+    libxml2.so.2* libxshmfence.so.1* libpciaccess.so.0* libbsd.so.0* libmd.so.0* \
     libzstd.so.1* libffi.so.8* liblzma.so.5* libz.so.1* \
     /out/lib/ \
  && cp -a /usr/share/libdrm/amdgpu.ids /out/share/libdrm/
@@ -110,6 +114,7 @@ RUN mkdir -p /out/lib/dri /out/share/libdrm \
 FROM lscr.io/linuxserver/plex:latest
 
 COPY --from=mesa /out /vaapi-amdgpu
+COPY --from=mesa /out/share/libdrm/amdgpu.ids /usr/share/libdrm/amdgpu.ids
 ```
 
 **2.** Build and drop the mod from your run/compose — env vars do the work the mod's launcher used to do:

@@ -5,8 +5,8 @@
 # Upstream's published Docker Hub image was frozen at ~2023-03
 # (Mesa 22.3 / libva 2.17 / LLVM 15, musl) even though this Dockerfile says
 # alpine:edge. This fork rebuilds against current alpine:edge
-# (2026-09-11 build = Mesa 26.2.2 / libva 2.23 / LLVM 23 / ACO) and fixes
-# the library copy list for modern Mesa:
+# (2026-11-18 build = Mesa 26.3.0 / libva 2.24.1 / LLVM 23.1 /
+# libdrm 2.4.134 / ACO) and fixes the library copy list for modern Mesa:
 #
 #   - libLLVM-15*  -> libLLVM*        (soname changed, LLVM 23)
 #   - + libgallium*                   (Mesa 23.3+: radeonsi is a stub that
@@ -16,6 +16,9 @@
 #                                      dlopen; missing it = silent software
 #                                      fallback in Plex)
 #   - + libxcb-randr.so.0*            (newer stack dlopens it at runtime)
+#   - + libdrm_intel.so.1* and         (Mesa 26.3: libgallium now links
+#     libpciaccess.so.0*                libdrm_intel; missing it = radeonsi
+#                                       fails to load, "VAAPI connection -1")
 #   - libz moved from /lib to /usr/lib in current Alpine edge
 #   - libelf* glob broadened (libelf-<ver>.so + libelf.so.1)
 #
@@ -50,6 +53,7 @@ RUN mkdir -p "/source/vaapi-amdgpu/lib/dri" \
     libXdmcp.so.6* \
     libdrm.so.2* \
     libdrm_amdgpu.so.1* \
+    libdrm_intel.so.1* \
     libdrm_nouveau.so.2* \
     libdrm_radeon.so.1* \
     libelf* \
@@ -67,6 +71,7 @@ RUN mkdir -p "/source/vaapi-amdgpu/lib/dri" \
     libxcb.so.1* \
     libxml2.so.2* \
     libxshmfence.so.1* \
+    libpciaccess.so.0* \
     libbsd.so.0* \
     libmd.so.0* \
     libzstd.so.1* \
