@@ -4,6 +4,8 @@ Fork of [jefflessard/plex-vaapi-amdgpu-mod](https://github.com/jefflessard/plex-
 
 [linuxserver.io mod](https://github.com/linuxserver/docker-mods) that adds AMD amdgpu hardware VAAPI transcoding to the [linuxserver.io Plex Media Server image](https://docs.linuxserver.io/images/docker-plex).
 
+**About this fork:** the updated-engine changes here are maintained by [jollyroger1480](https://github.com/jollyroger1480); the original mod is jefflessard's. Free to use. If this fork saved you time, tips are welcome: [Cash App](https://cash.app/$jollyroger1480) or Bitcoin `bc1qydycnf5pjhez5d0mrgmmumyv2g5nc63mwet89j`. More links at the [bottom](#support-and-links).
+
 ## Why this fork exists
 
 Upstream's published Docker Hub image (`jefflessard/plex-vaapi-amdgpu-mod`) is frozen at ~2023-03 — **Mesa 22.3 / libva 2.17 / LLVM 15** — even though the Dockerfile builds from `alpine:edge` (the published image just wasn't rebuilt). This fork rebuilds against current `alpine:edge` (**2026-09-11 build = Mesa 26.2.2 / libva 2.23 / LLVM 23 / ACO**) and fixes the library copy list for modern Mesa.
@@ -139,3 +141,13 @@ docker build -t plex-amdgpu . && docker compose up -d --force-recreate
 ```
 
 Verification is identical to the mod path (see Troubleshooting above). Because the engine ships inside the image, an update is: `docker build` + `--force-recreate` — no mod download happens at startup.
+
+## Support and links
+
+This fork's updates are free, and a tip is welcome but never expected. Tips go to the fork maintainer, not the upstream author.
+
+- Tip (Cash App): [$jollyroger1480](https://cash.app/$jollyroger1480)
+- Bitcoin: `bc1qydycnf5pjhez5d0mrgmmumyv2g5nc63mwet89j`
+- eBay store: [Buccaneer Salvage](https://www.ebay.com/str/buccaneersalvage)
+- YouTube: [@BuccaneerSalvage](https://www.youtube.com/@BuccaneerSalvage)
+- X: [@jollyroger1480](https://x.com/jollyroger1480)
