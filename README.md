@@ -34,6 +34,8 @@ Verified live 2026-09-11: Plex 1.43.4 (`lscr.io/linuxserver/plex:latest`), AMD R
 
 Re-checked 2026-11-18 against Mesa 26.3.0 and Plex 1.43.5.11079 (`lscr.io/linuxserver/plex:latest`, ls333) on the same RX 6950 XT: every library the VAAPI driver needs resolves inside the bundle, `vainfo` lists the radeonsi decode and encode profiles (H.264, HEVC, HEVC Main10, VP9, AV1 decode), and Plex's own `Plex Transcoder` opens the driver and encodes with `h264_vaapi`. A full transcode inside a running Plex server was not re-run on this build.
 
+Verified live 2026-11-18 with a full transcode in a running server: Plex 1.43.5.11079 on its Ubuntu 26.04 base with this engine baked into the image (Mesa 26.2.5, see the last section), same RX 6950 XT. An HEVC film was decoded, scaled and re-encoded to H.264 on the GPU (`scale_vaapi`, `h264_vaapi`), and Plex logged `hardware transcoding: using zero-copy transcoding` and `final decoder: vaapi, final encoder: vaapi`. The Mesa 26.3.0 bundle above has not had a full transcode yet.
+
 ## Usage
 
 ```bash
